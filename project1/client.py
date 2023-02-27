@@ -3,6 +3,17 @@ import socket
 import pickle
 import cryptography
 
+CCODE = "1234" #challenge code pentru cumparator si PG
+
+def customer_steps(keys):
+    pass
+
+def merchant_steps(keys):
+    pass
+
+def payment_gateway_steps(keys):
+    pass
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Please provide a port.")
@@ -19,15 +30,15 @@ if __name__ == "__main__":
     client_socket.connect((host, port))
 
     #faza de pregatire: primim cheile necesare de la server
-    keys = pickle.loads(client_socket.recv(4096))
-    print(keys)
+    keys = pickle.loads(client_socket.recv(2048))
 
+    #executam pasii protocolului
     match port:
         case 7000:
-            pass
+            customer_steps(keys)
         case 8000:
-            pass
+            merchant_steps(keys)
         case 9000:
-            pass
+            payment_gateway_steps(keys)
 
     client_socket.close()
