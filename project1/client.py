@@ -6,7 +6,21 @@ import cryptography
 CCODE = "1234" #challenge code pentru cumparator si PG
 
 def customer_steps(keys):
-    pass
+    sessionKey = cryptography.generate_session_key()
+
+    while True:
+        id = input("Enter product id: ")
+        client_socket.send(id.encode())
+        if client_socket.recv(30) == b"Product exists":
+            break
+    merchant_public_key, merchant_private_key = cryptography.load_asymmetric_keys(keys["merchant_public_key"], keys["customer_private_key"])
+    customer_public_key, customer_private_key = cryptography.load_asymmetric_keys(keys["customer_public_key"],
+                                                                                  keys["customer_private_key"])
+    k = cryptography.encrypt_with_public_key(merchant_public_key, sessionKey)
+    dict = {"customer_merchant_key": k,
+        "customer_public_key": cryptography.encrypt_with_session_key(k, customer_public_key) }
+
+    client_socket.send(pickle.dumps(dict))
 
 def merchant_steps(keys):
     pass
@@ -31,6 +45,19 @@ if __name__ == "__main__":
 
     #faza de pregatire: primim cheile necesare de la server
     keys = pickle.loads(client_socket.recv(2048))
+    # file = open("keys.PEM", "rb")
+    # customer_public_key = file.read()
+    # customer_private_key = file.read()
+    # merchant_public_key = file.read()
+    # merchant_private_key = file.read()
+    # payment_gateway_public_key = file.read()
+    # payment_gateway_private_key = file.read()
+    # file.close()
+
+    # customer_public_key, customer_private_key = cryptography.load_asymmetric_keys(customer_public_key,customer_private_key)
+    # merchant_public_key, merchant_private_key = cryptography.load_asymmetric_keys(merchant_public_key,merchant_private_key)
+    # payment_gateway_public_key, payment_gateway_private_key = cryptography.load_asymmetric_keys(payment_gateway_public_key,
+    #                                                                               payment_gateway_private_key)
 
     #executam pasii protocolului
     match port:

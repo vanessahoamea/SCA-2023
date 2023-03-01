@@ -1,6 +1,8 @@
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import PKCS1_OAEP
 from Cryptodome.Cipher import AES
+from Cryptodome.Hash import SHA256
+from Cryptodome.Signature import pkcs1_15
 from os import urandom
 
 def generate_asymmetric_keys():
@@ -18,7 +20,7 @@ def load_asymmetric_keys(public_key_bytes, private_key_bytes):
     return (public_key, private_key)
 
 def encrypt_with_public_key(public_key, message):
-    message = message.encode() #string to bytes
+    #message = message.encode() #string to bytes
 
     cipher = PKCS1_OAEP.new(public_key)
     encrypted_message = cipher.encrypt(message)
@@ -39,7 +41,7 @@ def generate_session_key():
     return session_key
 
 def encrypt_with_session_key(session_key, message):
-    message = message.encode() #string to bytes
+    #message = message.encode() #string to bytes
 
     cipher = AES.new(session_key, AES.MODE_EAX)
     nonce = cipher.nonce
@@ -57,3 +59,16 @@ def decrypt_with_session_key(session_key, ciphertext, tag, nonce):
         return plaintext
     except ValueError:
         return None
+
+def signature(message, key):
+    h = SHA256.new(message.encode())
+    signature = pkcs1_15.new(key).sign(h)
+    return signature
+
+def check_signatures(message, key, signature):
+    h = SHA256.new(message)
+    try:
+        pkcs1_15.new(key).verify(h, signature)
+        return True
+    except (ValueError, TypeError):
+        return False

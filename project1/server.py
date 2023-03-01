@@ -1,6 +1,7 @@
 import socket
 import pickle
 import cryptography
+import json
 from threading import Thread
 
 def accept_clients(customer_socket, merchant_socket, payment_gateway_socket):
@@ -23,6 +24,16 @@ def transaction(customer, merchant, payment_gateway):
     customer_public_key, customer_private_key = cryptography.generate_asymmetric_keys()
     merchant_public_key, merchant_private_key = cryptography.generate_asymmetric_keys()
     payment_gateway_public_key, payment_gateway_private_key = cryptography.generate_asymmetric_keys()
+
+    # file = open("keys.PEM", "wb")
+    # file.write(customer_public_key)
+    # file.write(customer_private_key)
+    # file.write(merchant_public_key)
+    # file.write(merchant_private_key)
+    # file.write(payment_gateway_public_key)
+    # file.write(payment_gateway_private_key)
+    # file.close()
+
 
     customer.send(pickle.dumps({
         "customer_public_key": customer_public_key,
@@ -60,7 +71,25 @@ def transaction(customer, merchant, payment_gateway):
     print("Transaction ended.")
 
 def setup(customer, merchant):
-    pass
+        while True:
+            id = customer.recv(10).decode()
+            # print(id)
+            fileName = open("products.json", "r")
+            file = json.load(fileName)
+            #print(file["products"])
+            exists = False
+            for products in file["products"]:
+
+                if products["id"] == int(id):
+                    exists = True
+            fileName.close()
+            if not exists:
+                customer.send(b"Product does not exists")
+            else:
+                customer.send(b"Product exists")
+                break
+        data = pickle.loads(customer.recv(4000))
+        print(data)
 
 def exchange(customer, merchant, payment_gateway):
     pass
