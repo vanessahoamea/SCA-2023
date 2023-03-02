@@ -1,6 +1,5 @@
 from Cryptodome.PublicKey import RSA
-from Cryptodome.Cipher import PKCS1_OAEP
-from Cryptodome.Cipher import AES
+from Cryptodome.Cipher import AES, PKCS1_OAEP
 from Cryptodome.Hash import SHA256
 from Cryptodome.Signature import pkcs1_15
 from os import urandom
@@ -19,8 +18,12 @@ def load_asymmetric_keys(public_key_bytes, private_key_bytes):
 
     return (public_key, private_key)
 
+def load_one_asymmetric_key(bytes_key):
+    return RSA.import_key(bytes_key)
+
 def encrypt_with_public_key(public_key, message):
-    #message = message.encode() #string to bytes
+    if(isinstance(message, str)):
+        message = message.encode() #string to bytes
 
     cipher = PKCS1_OAEP.new(public_key)
     encrypted_message = cipher.encrypt(message)
@@ -29,11 +32,12 @@ def encrypt_with_public_key(public_key, message):
 
 def decrypt_with_private_key(private_key, message):
     cipher = PKCS1_OAEP.new(private_key)
-    decrypted_message = cipher.decrypt(message)
 
-    decrypted_message = decrypted_message.decode() #bytes to string
-
-    return decrypted_message
+    try:
+        decrypted_message = cipher.decrypt(message)
+        return decrypted_message
+    except ValueError:
+        return None
 
 def generate_session_key():
     session_key = urandom(16)
@@ -41,7 +45,8 @@ def generate_session_key():
     return session_key
 
 def encrypt_with_session_key(session_key, message):
-    #message = message.encode() #string to bytes
+    if(isinstance(message, str)):
+        message = message.encode() #string to bytes
 
     cipher = AES.new(session_key, AES.MODE_EAX)
     nonce = cipher.nonce
@@ -55,20 +60,24 @@ def decrypt_with_session_key(session_key, ciphertext, tag, nonce):
 
     try:
         cipher.verify(tag)
-        plaintext = plaintext.decode() #bytes to string
         return plaintext
     except ValueError:
         return None
 
-def signature(message, key):
-    h = SHA256.new(message.encode())
-    signature = pkcs1_15.new(key).sign(h)
+def signature(private_key, message):
+    if(isinstance(message, str)):
+        message = message.encode() #string to bytes
+
+    h = SHA256.new(message)
+    signature = pkcs1_15.new(private_key).sign(h)
+
     return signature
 
-def check_signatures(message, key, signature):
+def check_signature(public_key, message, signature):
     h = SHA256.new(message)
+
     try:
-        pkcs1_15.new(key).verify(h, signature)
+        pkcs1_15.new(public_key).verify(h, signature)
         return True
     except (ValueError, TypeError):
         return False
