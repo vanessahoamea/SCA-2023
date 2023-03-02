@@ -4,6 +4,8 @@ import pickle
 import secrets
 import string
 import cryptography
+import json
+from os import urandom
 
 CCODE = "1234" #challenge code pentru C si PG
 
@@ -56,6 +58,50 @@ def customer_steps(keys, conn):
             conn.send(b"Exit")
         else:
             conn.send(b"Success step 2.2")
+    credit_card_id = -1
+    while True:
+        credit_card_id = input("Credit Card ID: ")
+        conn.send(credit_card_id.encode())
+
+        response = conn.recv(40).decode()
+        if response == "Credit card exists":
+            break
+        else:
+            print(response)
+
+
+
+    data = {"credit_card_id": int(credit_card_id),
+            "CCode": CCODE,
+            "Sid": sid.decode(),
+            "Customer_public_key": keys["customer_public_key"],
+            "NC": "zxcvmnb"
+            }
+    customer_payment_gateway_key = cryptography.generate_session_key()
+    keys["customer_payment_gateway_key"] = customer_payment_gateway_key
+    data_string = json.dumps(data)
+    encrypted_data = cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], data_string)
+    signature_CPG = cryptography.signature(keys["customer_payment_gateway_key"], data_string)
+    encrypted_session_key = cryptography.encrypt_with_public_key(keys["payment_gateway_public_key"], customer_payment_gateway_key)
+
+    product_data = { "id": product_id,
+                     "Sid": sid.decode(),
+                     "NC": "asdfhgfd"
+                   }
+    product_data_string = json.dumps(product_data)
+    encrypted_product_data = cryptography.encrypt_with_session_key(keys["customer_merchant_key"], product_data_string)
+    signature_PO = cryptography.signature(keys["customer_merchant_key"], product_data_string)
+
+    PM = { "Credit_card_information": encrypted_data,
+           "Credit_card_signature": signature_CPG,
+           "Customer_payment_gateway_key": encrypted_session_key
+    }
+    encrypted_PM = cryptography.encrypt_with_session_key(keys["customer_merchant_key"], json.dumps(PM))
+
+    conn.send(pickle.dumps({"encrypted_PM": encrypted_PM, "encrypted_product_data": encrypted_product_data, "signature_PO": signature_PO}))
+
+
+
 
 def merchant_steps(keys, conn):
     while True:

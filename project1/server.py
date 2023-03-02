@@ -104,7 +104,27 @@ def setup(customer, merchant, payment_gateway):
             break
 
 def exchange(customer, merchant, payment_gateway):
-    pass
+    #pasul 3: carte de credit si produs
+    while True:
+        credit_card_id = customer.recv(10).decode()
+        exists = False
+        with open("data/cards.json", "r") as file:
+            cards_list = json.load(file)
+            for card in cards_list["customers"]:
+                try:
+                    if card["id"] == int(credit_card_id):
+                        exists = True
+                except:
+                    pass
+
+        if not exists:
+            customer.send(b"Credit card does not exist")
+        else:
+            customer.send(b"Credit card exists")
+            break
+
+    data = customer.recv(4098)
+    print(data)
 
 def resolution(customer, merchant, payment_gateway):
     pass
