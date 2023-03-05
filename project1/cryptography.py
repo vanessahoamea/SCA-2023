@@ -52,7 +52,7 @@ def encrypt_with_session_key(session_key, message):
     nonce = cipher.nonce
     ciphertext, tag = cipher.encrypt_and_digest(message)
 
-    return (ciphertext, tag, nonce)
+    return [ciphertext, tag, nonce]
 
 def decrypt_with_session_key(session_key, ciphertext, tag, nonce):
     cipher = AES.new(session_key, AES.MODE_EAX, nonce=nonce)

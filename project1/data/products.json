@@ -2,15 +2,18 @@
   "products": [
     {
       "id": 10,
-      "price": 100
+      "price": 100,
+      "merchant_card_id": 3
     },
     {
       "id": 15,
-      "price": 80
+      "price": 80,
+      "merchant_card_id": 4
     },
     {
       "id": 18,
-      "price": 200
+      "price": 200,
+      "merchant_card_id": 3
     }
   ]
 }

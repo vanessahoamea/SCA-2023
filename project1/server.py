@@ -5,6 +5,19 @@ import json
 import cryptography
 from threading import Thread
 
+def existsInDatabase(file_name, section, item_id):
+    exists = False
+    with open(file_name, "r") as file:
+        items_list = json.load(file)
+        for item in items_list[section]:
+            try:
+                if item["id"] == item_id:
+                    exists = True
+            except:
+                pass
+    
+    return exists
+
 def accept_clients(customer_socket, merchant_socket, payment_gateway_socket):
     #acceptam conexiunile
     customer_conn, customer_addr = customer_socket.accept()
@@ -45,9 +58,6 @@ def transaction(customer, merchant, payment_gateway):
     #exchange sub-protocol
     exchange(customer, merchant, payment_gateway)
 
-    #resolution sub-protocol
-    resolution(customer, merchant, payment_gateway)
-
     #inchidem conexiunile
     close_connections(customer, merchant, payment_gateway)
 
@@ -59,16 +69,7 @@ def setup(customer, merchant, payment_gateway):
     while True:
         product_id = customer.recv(10).decode()
 
-        exists = False
-        with open("data/products.json", "r") as file:
-            products_list = json.load(file)
-            for product in products_list["products"]:
-                try:
-                    if product["id"] == int(product_id):
-                        exists = True
-                except:
-                    pass
-
+        exists = existsInDatabase("data/products.json", "products", int(product_id))
         if not exists:
             customer.send(b"Product does not exist")
         else:
@@ -84,7 +85,7 @@ def setup(customer, merchant, payment_gateway):
         status = merchant.recv(30).decode()
 
         if status == "Exit":
-            close_connections(customer, merchant, payment_gateway)
+            close_connections(customer, merchant, payment_gateway, True)
             sys.exit()
         if status == "Success step 1.2":
             break
@@ -98,38 +99,64 @@ def setup(customer, merchant, payment_gateway):
         status = customer.recv(30).decode()
         
         if status == "Exit":
-            close_connections(customer, merchant, payment_gateway)
+            close_connections(customer, merchant, payment_gateway, True)
             sys.exit()
-        if status == "Success step 2.2":
+        if status == "Success step 2":
             break
 
 def exchange(customer, merchant, payment_gateway):
-    #pasul 3: carte de credit si produs
+    #cumparatorul isi alege o carte de credit pentru a efectua plata
+    credit_card_id = -1
     while True:
         credit_card_id = customer.recv(10).decode()
-        exists = False
-        with open("data/cards.json", "r") as file:
-            cards_list = json.load(file)
-            for card in cards_list["customers"]:
-                try:
-                    if card["id"] == int(credit_card_id):
-                        exists = True
-                except:
-                    pass
 
+        exists = existsInDatabase("data/cards.json", "customers", int(credit_card_id))
         if not exists:
             customer.send(b"Credit card does not exist")
         else:
             customer.send(b"Credit card exists")
             break
 
-    data = customer.recv(4098)
-    print(data)
+    #pasul 3: C trimite lui M detaliile de plata
+    data = customer.recv(4096)
+    merchant.send(b"Received payment details")
+    merchant.send(data)
+
+    while True:
+        status = merchant.recv(30).decode()
+        
+        if status == "Exit":
+            close_connections(customer, merchant, payment_gateway, True)
+            sys.exit()
+        if status == "Success step 3":
+            break
+    
+    #pasul 4: M trimite mai departe detaliile de plata catre PG
+    data = merchant.recv(4096)
+    payment_gateway.send(b"Forwarding payment details")
+    payment_gateway.send(data)
+
+    while True:
+        status = payment_gateway.recv(30).decode()
+        
+        if status == "Exit":
+            close_connections(customer, merchant, payment_gateway, True)
+            sys.exit()
+        if status == "Success step 4":
+            break
+
+    #resolution sub-protocol (in caz de timeout)
+    resolution(customer, merchant, payment_gateway)
 
 def resolution(customer, merchant, payment_gateway):
     pass
 
-def close_connections(customer, merchant, payment_gateway):
+def close_connections(customer, merchant, payment_gateway, error = False):
+    if error:
+        customer.send(b"[ERROR] Couldn't complete transaction.")
+        merchant.send(b"[ERROR] Couldn't complete transaction.")
+        payment_gateway.send(b"[ERROR] Couldn't complete transaction.")
+
     customer.close()
     merchant.close()
     payment_gateway.close()
