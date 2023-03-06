@@ -101,10 +101,12 @@ def merchant_steps(keys, conn):
             break
     data = pickle.loads(conn.recv(4096))
 
+
+
     transaction_data = {
         "response": cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["response"]).decode(),
-        "Sid" : sid,
-        "Amount": amount.decode() ,
+        "Sid": sid,
+        "Amount": amount.decode(),
         "Nonce": nonce.decode()
     }
 
@@ -122,3 +124,23 @@ def merchant_steps(keys, conn):
             return
         else:
             conn.send(b"Success step 5")
+
+    while True:
+        resp = conn.recv(40).decode()
+        if resp == "Send response to customer":
+            break
+        elif resp == "resolution":
+            return
+
+    transaction_data = {
+        "response": cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["response"]).decode(),
+        "Sid": sid,
+        "Amount": amount.decode(),
+        "Nonce": nonce.decode()
+    }
+    transaction_data_signature = cryptography.signature(keys["merchant_private_key"], pickle.dumps(transaction_data))
+    data = { "response": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], response),
+             "Sid": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], sid),
+             "transaction_data_signature": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], transaction_data_signature)
+    }
+    conn.send(pickle.dumps(data))

@@ -171,14 +171,20 @@ def exchange(customer, merchant, payment_gateway):
     if end - start > TIMELIMIT:
         timeout = True
 
-    if timeout :
+    if timeout:
         #resolution sub-protocol (in caz de timeout)
         resolution(customer, merchant, payment_gateway)
     else:
-        print("timeout = false")
+        merchant.send(b"Send response to customer")
+
+    data = merchant.recv(4096)
+    customer.send(b"Forwarding response")
+    customer.send(data)
+
 
 def resolution(customer, merchant, payment_gateway):
     print("Am intrat in resolution")
+
 
 def close_connections(customer, merchant, payment_gateway, error = False):
     if error:

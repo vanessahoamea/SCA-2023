@@ -121,3 +121,36 @@ def customer_steps(keys, conn):
         "order_details": order_details,
         "order_details_signature": order_details_signature
     }))
+
+    while True:
+        response = conn.recv(40).decode()
+        if response == "Forwarding response":
+            break
+
+    data = conn.recv(4096)
+    transaction_data = {
+        "response": cryptography.decrypt_with_session_key(keys["customer_merchant_key"],
+                                                          *data["response"]).decode(),
+        "Sid": sid.decode(),
+        "Amount": amount,
+        "Nonce": NONCE
+    }
+
+    transaction_data_signature = cryptography.decrypt_with_session_key(keys["customer_merchant_key"],
+                                                                       *data["transaction_data_signature"])
+    sid_pg = cryptography.decrypt_with_session_key(keys["customer_merchant_key"], *data["Sid"])
+
+    if sid_pg == None or transaction_data_signature == None:
+        conn.send(b"Exit")
+        print("[ERROR] Couldn't complete transaction.")
+        return
+    else:
+        if not cryptography.check_signature(keys["merchant_public_key"], pickle.dumps(transaction_data),
+                                            transaction_data_signature):
+            conn.send(b"Exit")
+            print("[ERROR] Couldn't complete transaction.")
+            return
+        else:
+            conn.send(b"Success step 6")
+
+    print("final")
