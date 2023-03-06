@@ -121,9 +121,3 @@ def customer_steps(keys, conn):
         "order_details": order_details,
         "order_details_signature": order_details_signature
     }))
-
-    while True:
-        response = conn.recv(40).decode()
-        if response == "[ERROR] Couldn't complete transaction.":
-            print(response)
-            return

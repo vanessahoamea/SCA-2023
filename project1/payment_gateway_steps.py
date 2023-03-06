@@ -1,3 +1,4 @@
+import json
 import pickle
 import cryptography
 
@@ -85,8 +86,25 @@ def payment_gateway_steps(keys, conn):
         else:
             conn.send(b"Success step 4")
 
-    while True:
-        response = conn.recv(40).decode()
-        if response == "[ERROR] Couldn't complete transaction.":
-            print(response)
-            return
+    response = "ABORT"
+
+    with open("data/cards.json", "r") as file:
+        cards = json.load(file)["customers"]
+        for card in cards:
+            if card["id"] == int(credit_card_id):
+                if card["amount"] >= int(amount_c):
+                    response = "YES"
+
+    transaction_data = {
+        "response": response,
+        "Sid" : sid_c.decode(),
+        "Amount": amount_c.decode(),
+        "Nonce": nonce_c.decode()
+    }
+    transaction_data_signature = cryptography.signature(keys["payment_gateway_private_key"], pickle.dumps(transaction_data))
+    data = { "response" : cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"], response),
+             "Sid": cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"], sid_c),
+             "transaction_data_signature": cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"],transaction_data_signature)
+    }
+
+    conn.send(pickle.dumps(data))

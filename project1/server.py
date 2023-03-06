@@ -2,8 +2,12 @@ import sys
 import socket
 import pickle
 import json
+import time
+
 import cryptography
 from threading import Thread
+
+TIMELIMIT = 2
 
 def existsInDatabase(file_name, section, item_id):
     exists = False
@@ -105,6 +109,7 @@ def setup(customer, merchant, payment_gateway):
             break
 
 def exchange(customer, merchant, payment_gateway):
+    timeout = False
     #cumparatorul isi alege o carte de credit pentru a efectua plata
     credit_card_id = -1
     while True:
@@ -121,6 +126,8 @@ def exchange(customer, merchant, payment_gateway):
     data = customer.recv(4096)
     merchant.send(b"Received payment details")
     merchant.send(data)
+
+    start = time.perf_counter()
 
     while True:
         status = merchant.recv(30).decode()
@@ -145,11 +152,33 @@ def exchange(customer, merchant, payment_gateway):
         if status == "Success step 4":
             break
 
-    #resolution sub-protocol (in caz de timeout)
-    resolution(customer, merchant, payment_gateway)
+    #pasul 5: PG trimite lui M raspunsul
+
+
+    data = payment_gateway.recv(4096)
+    merchant.send(b"Forwarding response")
+    merchant.send(data)
+
+    while True:
+        status = merchant.recv(30).decode()
+        if status == "Exit":
+            close_connections(customer, merchant, payment_gateway, True)
+            sys.exit()
+        if status == "Success step 5":
+            break
+
+    end = time.perf_counter()
+    if end - start > TIMELIMIT:
+        timeout = True
+
+    if timeout :
+        #resolution sub-protocol (in caz de timeout)
+        resolution(customer, merchant, payment_gateway)
+    else:
+        print("timeout = false")
 
 def resolution(customer, merchant, payment_gateway):
-    pass
+    print("Am intrat in resolution")
 
 def close_connections(customer, merchant, payment_gateway, error = False):
     if error:
@@ -186,3 +215,4 @@ if __name__ == "__main__":
 
     for i in range(0, 10):
         Thread(target=accept_clients, args=(customer_socket, merchant_socket, payment_gateway_socket)).start()
+

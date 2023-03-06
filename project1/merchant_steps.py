@@ -93,8 +93,32 @@ def merchant_steps(keys, conn):
         "merchant_payment_gateway_key": cryptography.encrypt_with_public_key(keys["payment_gateway_public_key"], keys["merchant_payment_gateway_key"])
     }))
 
+    #pasul 5:
+
     while True:
         response = conn.recv(40).decode()
-        if response == "[ERROR] Couldn't complete transaction.":
-            print(response)
+        if response == "Forwarding response":
+            break
+    data = pickle.loads(conn.recv(4096))
+
+    transaction_data = {
+        "response": cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["response"]).decode(),
+        "Sid" : sid,
+        "Amount": amount.decode() ,
+        "Nonce": nonce.decode()
+    }
+
+    transaction_data_signature = cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["transaction_data_signature"])
+    sid_pg = cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["Sid"])
+
+    if sid_pg == None or transaction_data_signature == None:
+        conn.send(b"Exit")
+        print("[ERROR] Couldn't complete transaction.")
+        return
+    else:
+        if not cryptography.check_signature(keys["payment_gateway_public_key"], pickle.dumps(transaction_data), transaction_data_signature):
+            conn.send(b"Exit")
+            print("[ERROR] Couldn't complete transaction.")
             return
+        else:
+            conn.send(b"Success step 5")
