@@ -93,27 +93,28 @@ def merchant_steps(keys, conn):
         "merchant_payment_gateway_key": cryptography.encrypt_with_public_key(keys["payment_gateway_public_key"], keys["merchant_payment_gateway_key"])
     }))
 
-    #pasul 5:
-
     while True:
         response = conn.recv(40).decode()
-        if response == "Forwarding response":
+        if response == "Sending transaction response":
             break
+        elif response == "[ERROR] Couldn't complete transaction.":
+            print(response)
+            return
+
+    #pasul 5: primim raspunsul (YES/ABORT) de la PG
     data = pickle.loads(conn.recv(4096))
 
-
-
+    final_response = cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["response"])
+    sid_pg = cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["sid"])
     transaction_data = {
         "response": cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["response"]).decode(),
-        "Sid": sid,
-        "Amount": amount.decode(),
-        "Nonce": nonce.decode()
+        "sid": sid,
+        "amount": amount.decode(),
+        "nonce": nonce.decode()
     }
-
     transaction_data_signature = cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["transaction_data_signature"])
-    sid_pg = cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["Sid"])
 
-    if sid_pg == None or transaction_data_signature == None:
+    if final_response == None or sid_pg == None or transaction_data_signature == None or final_response.decode() not in ["YES", "ABORT"] or sid_pg.decode() != sid:
         conn.send(b"Exit")
         print("[ERROR] Couldn't complete transaction.")
         return
@@ -126,21 +127,18 @@ def merchant_steps(keys, conn):
             conn.send(b"Success step 5")
 
     while True:
-        resp = conn.recv(40).decode()
-        if resp == "Send response to customer":
+        response = conn.recv(40).decode()
+        if response == "Forwarding response to customer":
             break
-        elif resp == "resolution":
+        elif response == "Resolution":
+            return
+        elif response == "[ERROR] Couldn't complete transaction.":
+            print(response)
             return
 
-    transaction_data = {
-        "response": cryptography.decrypt_with_session_key(keys["merchant_payment_gateway_key"], *data["response"]).decode(),
-        "Sid": sid,
-        "Amount": amount.decode(),
-        "Nonce": nonce.decode()
-    }
-    transaction_data_signature = cryptography.signature(keys["merchant_private_key"], pickle.dumps(transaction_data))
-    data = { "response": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], response),
-             "Sid": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], sid),
-             "transaction_data_signature": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], transaction_data_signature)
-    }
-    conn.send(pickle.dumps(data))
+    #pasul 6: trimitem raspunsul catre cumparator
+    conn.send(pickle.dumps({
+        "response": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], final_response),
+        "sid": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], sid),
+        "transaction_data_signature": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], transaction_data_signature)
+    }))

@@ -3,11 +3,10 @@ import socket
 import pickle
 import json
 import time
-
 import cryptography
 from threading import Thread
 
-TIMELIMIT = 2
+TIME_LIMIT = 10
 
 def existsInDatabase(file_name, section, item_id):
     exists = False
@@ -127,6 +126,7 @@ def exchange(customer, merchant, payment_gateway):
     merchant.send(b"Received payment details")
     merchant.send(data)
 
+    #incepem sa numaram secundele de la trimiterea detaliilor de plata
     start = time.perf_counter()
 
     while True:
@@ -153,10 +153,8 @@ def exchange(customer, merchant, payment_gateway):
             break
 
     #pasul 5: PG trimite lui M raspunsul
-
-
     data = payment_gateway.recv(4096)
-    merchant.send(b"Forwarding response")
+    merchant.send(b"Sending transaction response")
     merchant.send(data)
 
     while True:
@@ -167,24 +165,38 @@ def exchange(customer, merchant, payment_gateway):
         if status == "Success step 5":
             break
 
+    #verificam daca procesarea datelor dureaza mai mult decat limita
     end = time.perf_counter()
-    if end - start > TIMELIMIT:
+    if end - start > TIME_LIMIT:
         timeout = True
 
     if timeout:
-        #resolution sub-protocol (in caz de timeout)
+        #resolution sub-protocol
+        customer.send(b"Resolution")
+        merchant.send(b"Resolution")
+        payment_gateway.send(b"Resolution")
         resolution(customer, merchant, payment_gateway)
+        return
     else:
-        merchant.send(b"Send response to customer")
+        merchant.send(b"Forwarding response to customer")
 
+    #pasul 6: M transmite raspunsul catre C
     data = merchant.recv(4096)
-    customer.send(b"Forwarding response")
+    customer.send(b"Received response")
     customer.send(data)
 
+    while True:
+        status = customer.recv(30).decode()
+        if status == "Exit":
+            close_connections(customer, merchant, payment_gateway, True)
+            sys.exit()
+        if status == "Success step 6":
+            break
+    
+    print("FINISH")
 
 def resolution(customer, merchant, payment_gateway):
     print("Am intrat in resolution")
-
 
 def close_connections(customer, merchant, payment_gateway, error = False):
     if error:

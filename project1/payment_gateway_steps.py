@@ -86,25 +86,36 @@ def payment_gateway_steps(keys, conn):
         else:
             conn.send(b"Success step 4")
 
+    #pasul 5: trimitem lui M raspunsul final
     response = "ABORT"
-
     with open("data/cards.json", "r") as file:
-        cards = json.load(file)["customers"]
-        for card in cards:
+        cards = json.load(file)
+        for card in cards["customers"]:
             if card["id"] == int(credit_card_id):
                 if card["amount"] >= int(amount_c):
                     response = "YES"
 
     transaction_data = {
         "response": response,
-        "Sid" : sid_c.decode(),
-        "Amount": amount_c.decode(),
-        "Nonce": nonce_c.decode()
+        "sid": sid_c.decode(),
+        "amount": amount_c.decode(),
+        "nonce": nonce_c.decode()
     }
     transaction_data_signature = cryptography.signature(keys["payment_gateway_private_key"], pickle.dumps(transaction_data))
-    data = { "response" : cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"], response),
-             "Sid": cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"], sid_c),
-             "transaction_data_signature": cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"],transaction_data_signature)
-    }
 
-    conn.send(pickle.dumps(data))
+    conn.send(pickle.dumps({
+        "response": cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"], response),
+        "sid": cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"], sid_c),
+        "transaction_data_signature": cryptography.encrypt_with_session_key(keys["merchant_payment_gateway_key"],transaction_data_signature)
+    }))
+
+    #salvam rezultatul in baza de date, in caz de resolution
+    history = None
+    with open("data/history.json", "r") as file:
+        history = json.load(file)
+        history.append(transaction_data)
+    
+    with open("data/history.json", "w") as file:
+        file.write(json.dumps(history, indent=4))
+
+    #TODO: modificam banii de pe cartile de credit
