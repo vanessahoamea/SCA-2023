@@ -119,3 +119,45 @@ def payment_gateway_steps(keys, conn):
         file.write(json.dumps(history, indent=4))
 
     #TODO: modificam banii de pe cartile de credit
+
+    while True:
+        response = conn.recv(40).decode()
+        if response == "Resolution data":
+            break
+        elif response == "[ERROR] Couldn't complete transaction.":
+            print(response)
+            return
+    data = pickle.loads(conn.recv(4096))
+
+
+    customer_payment_gateway_key = cryptography.decrypt_with_private_key(keys["payment_gateway_private_key"], data["customer_payment_gateway_key"])
+    keys["customer_payment_gateway_key"] = customer_payment_gateway_key
+    resolution_data = data["resolution_data"]
+
+    SidC = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *resolution_data["Sid"])
+    AmountC = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *resolution_data["Amount"])
+    NC = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *resolution_data["NC"])
+
+    if SidC == None or AmountC == None or NC == None:
+        print("nu merge")
+    else:
+        print("merge")
+
+    with open("data/history.json", "r") as file:
+        for transaction in json.load(file):
+            if SidC.decode() == transaction["sid"] and AmountC.decode() == transaction["amount"] and NC.decode() == transaction["nonce"]:
+                response = "SUCCES"
+            else:
+                response = "ABORT"
+
+    transaction_data = {
+        "response": response,
+        "Sid": SidC.decode(),
+        "Amount": AmountC.decode(),
+        "NC": NC.decode()
+    }
+    transaction_data_signature = cryptography.signature(keys["payment_gateway_private_key"], pickle.dumps(transaction_data))
+    conn.send(pickle.dumps({"reponse": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], response),
+                            "sid": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], SidC),
+                            "transaction_data_signature": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], transaction_data_signature)
+                            }))

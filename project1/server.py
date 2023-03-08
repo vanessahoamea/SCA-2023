@@ -194,9 +194,17 @@ def exchange(customer, merchant, payment_gateway):
             break
     
     print("FINISH")
+    resolution(customer, merchant, payment_gateway)
 
 def resolution(customer, merchant, payment_gateway):
-    print("Am intrat in resolution")
+    #pasul 7:
+    data = customer.recv(4096)
+    payment_gateway.send(b"Resolution data")
+    payment_gateway.send(data)
+
+    data = payment_gateway.recv(4096)
+    customer.send(b"Resolution response")
+    customer.send(data)
 
 def close_connections(customer, merchant, payment_gateway, error = False):
     if error:
