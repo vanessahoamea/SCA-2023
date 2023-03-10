@@ -64,6 +64,7 @@ def payment_gateway_steps(keys, conn):
             print("[ERROR] Couldn't complete transaction.")
             return
         else:
+            #TODO: verificam daca cardul lui C e valid
             conn.send(b"Success step 4.3")
     
     #verificam semnatura lui M
@@ -118,46 +119,100 @@ def payment_gateway_steps(keys, conn):
     with open("data/history.json", "w") as file:
         file.write(json.dumps(history, indent=4))
 
-    #TODO: modificam banii de pe cartile de credit
-
     while True:
         response = conn.recv(40).decode()
-        if response == "Resolution data":
+        if response == "Complete payment":
+            #modificam banii de pe cartile de credit
+            transfer_money(int(credit_card_id), int(merchant_card_id), int(amount_c))
+            print("Transaction completed succesfully.")
+            break
+        elif response == "Resolution":
+            resolution(keys, conn, sid_c, amount_c, nonce_c, credit_card_id, merchant_card_id)
+            return
+        elif response == "[ERROR] Couldn't complete transaction.":
+            print(response)
+            return
+
+def resolution(keys, conn, sid, amount, nonce, credit_card_id, merchant_card_id):
+    while True:
+        response = conn.recv(40).decode()
+        if response == "Received resolution data":
+            break
+
+    #pasul 7: primim datele necesare rezolutiei de la C
+    data = pickle.loads(conn.recv(4096))
+    
+    sid_c = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["sid"])
+    amount_c = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["amount"])
+    nonce_c = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["nonce"])
+    customer_public_key = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["customer_public_key"])
+
+    resolution_data = {
+        "sid": sid_c.decode(),
+        "amount": amount_c.decode(),
+        "nonce": nonce_c.decode(),
+        "customer_public_key": customer_public_key
+    }
+    resolution_data_signature = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["resolution_data_signature"])
+
+    if sid_c == None or amount_c == None or nonce_c == None or resolution_data_signature == None or sid_c != sid or amount_c != amount or nonce_c != nonce or customer_public_key != keys["customer_public_key_bytes"]:
+        conn.send(b"Exit")
+        print("[ERROR] Couldn't complete transaction.")
+        return
+    else:
+        if not cryptography.check_signature(keys["customer_public_key"], pickle.dumps(resolution_data), resolution_data_signature):
+            conn.send(b"Exit")
+            print("[ERROR] Couldn't complete transaction.")
+            return
+        else:
+            conn.send(b"Success step 7")
+    
+    #cautam raspunsul pentru tranzactie in baza de date
+    response = "ABORT"
+    with open("data/history.json", "r") as file:
+        history = json.load(file)
+        for transaction in history:
+            if transaction["sid"] == sid_c.decode() and transaction["amount"] == amount_c.decode() and transaction["nonce"] == nonce_c.decode():
+                response = transaction["response"]
+    
+    #pasul 8: trimitem raspunsul preluat din baza de date catre C
+    transaction_data = {
+        "response": response,
+        "sid": sid_c.decode(),
+        "amount": amount_c.decode(),
+        "nonce": nonce_c.decode()
+    }
+    transaction_data_signature = cryptography.signature(keys["payment_gateway_private_key"], pickle.dumps(transaction_data))
+
+    conn.send(pickle.dumps({
+        "response": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], response),
+        "sid": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], sid_c),
+        "transaction_data_signature": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"],transaction_data_signature)
+    }))
+
+    #finalizam tranzactia
+    while True:
+        response = conn.recv(40).decode()
+        if response == "Complete payment":
+            transfer_money(int(credit_card_id), int(merchant_card_id), int(amount_c))
+            print("Transaction completed succesfully.")
             break
         elif response == "[ERROR] Couldn't complete transaction.":
             print(response)
             return
-    data = pickle.loads(conn.recv(4096))
 
+def transfer_money(customer_credit_card, merchant_credit_card, amount):
+    with open("data/cards.json", "r+") as file:
+        cards = json.load(file)
 
-    customer_payment_gateway_key = cryptography.decrypt_with_private_key(keys["payment_gateway_private_key"], data["customer_payment_gateway_key"])
-    keys["customer_payment_gateway_key"] = customer_payment_gateway_key
-    resolution_data = data["resolution_data"]
-
-    SidC = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *resolution_data["Sid"])
-    AmountC = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *resolution_data["Amount"])
-    NC = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *resolution_data["NC"])
-
-    if SidC == None or AmountC == None or NC == None:
-        print("nu merge")
-    else:
-        print("merge")
-
-    with open("data/history.json", "r") as file:
-        for transaction in json.load(file):
-            if SidC.decode() == transaction["sid"] and AmountC.decode() == transaction["amount"] and NC.decode() == transaction["nonce"]:
-                response = "SUCCES"
-            else:
-                response = "ABORT"
-
-    transaction_data = {
-        "response": response,
-        "Sid": SidC.decode(),
-        "Amount": AmountC.decode(),
-        "NC": NC.decode()
-    }
-    transaction_data_signature = cryptography.signature(keys["payment_gateway_private_key"], pickle.dumps(transaction_data))
-    conn.send(pickle.dumps({"reponse": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], response),
-                            "sid": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], SidC),
-                            "transaction_data_signature": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], transaction_data_signature)
-                            }))
+        for card in cards["customers"]:
+            if card["id"] == customer_credit_card:
+                card["amount"] -= amount
+        
+        for card in cards["merchants"]:
+            if card["id"] == merchant_credit_card:
+                card["amount"] += amount
+        
+        file.seek(0)
+        json.dump(cards, file, indent=4)
+        file.truncate()

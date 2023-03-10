@@ -146,7 +146,7 @@ def customer_steps(keys, conn):
     }
     transaction_data_signature = cryptography.decrypt_with_session_key(keys["customer_merchant_key"], *data["transaction_data_signature"])
 
-    if final_response == None or sid_pg == None or transaction_data_signature == None or final_response.decode() not in ["YES", "ABORT"] or sid_pg.decode() != sid.decode():
+    if final_response == None or sid_pg == None or transaction_data_signature == None or final_response.decode() not in ["YES", "ABORT"] or sid_pg != sid:
         conn.send(b"Exit")
         print("[ERROR] Couldn't complete transaction.")
         return
@@ -157,32 +157,74 @@ def customer_steps(keys, conn):
             return
         else:
             conn.send(b"Success step 6")
-    
-    #pasul 7: trimitem resolution data catre PG
 
-    resolution_data_signature = cryptography.signature(keys["customer_private_key"], pickle.dumps({"Sid": sid.decode(), "Amount": amount, "NC": NONCE, "customer_public_key_bytes": keys["customer_public_key_bytes"]}))
-
-    customer_payment_gateway_key = cryptography.generate_session_key()
-    keys["customer_payment_gateway_key"] = customer_payment_gateway_key
-    data_resolution = {"Sid": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"],sid.decode()),
-                       "Amount": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"],amount),
-                       "NC": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"],NONCE),
-                       "customer_public_key_bytes": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"],keys["customer_public_key_bytes"]),
-                       "resolution_data_signature": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"],resolution_data_signature)}
-    conn.send(pickle.dumps({"resolution_data": data_resolution,
-                            "customer_payment_gateway_key": cryptography.encrypt_with_public_key(keys["payment_gateway_public_key"] , customer_payment_gateway_key)
-                            }))
-
+    #astemptam rezultatul tranzactiei
     while True:
         response = conn.recv(40).decode()
-        if response == "Resolution response":
+        if response == "Success":
+            print("Transaction completed succesfully.")
             break
         elif response == "[ERROR] Couldn't complete transaction.":
             print(response)
-            return
-
-    resolution_data = pickle.loads(conn.recv(4096))
-    
+            break
 
 def resolution(keys, conn, sid, amount):
-    pass
+    #pasul 7: trimitem datele pentru rezolutie catre PG
+    resolution_data = {
+        "sid": sid.decode(),
+        "amount": amount,
+        "nonce": NONCE,
+        "customer_public_key": keys["customer_public_key_bytes"]
+    }
+    resolution_data_signature = cryptography.signature(keys["customer_private_key"], pickle.dumps(resolution_data))
+
+    conn.send(pickle.dumps({
+        "sid": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], sid.decode()),
+        "amount": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], amount),
+        "nonce": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], NONCE),
+        "customer_public_key": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], keys["customer_public_key_bytes"]),
+        "resolution_data_signature": cryptography.encrypt_with_session_key(keys["customer_payment_gateway_key"], resolution_data_signature)
+    }))
+
+    while True:
+            response = conn.recv(40).decode()
+            if response == "Resolution response":
+                break
+            elif response == "[ERROR] Couldn't complete transaction.":
+                print(response)
+                return
+
+    #pasul 8: primim raspunsul de la PG, finalizam tranzactia
+    data = pickle.loads(conn.recv(4096))
+
+    final_response = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["response"])
+    sid_pg = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["sid"])
+    transaction_data = {
+        "response": cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["response"]).decode(),
+        "sid": sid.decode(),
+        "amount": amount,
+        "nonce": NONCE
+    }
+    transaction_data_signature = cryptography.decrypt_with_session_key(keys["customer_payment_gateway_key"], *data["transaction_data_signature"])
+
+    if final_response == None or sid_pg == None or transaction_data_signature == None or final_response.decode() not in ["YES", "ABORT"] or sid_pg != sid:
+        conn.send(b"Exit")
+        print("[ERROR] Couldn't complete transaction.")
+        return
+    else:
+        if not cryptography.check_signature(keys["payment_gateway_public_key"], pickle.dumps(transaction_data), transaction_data_signature):
+            conn.send(b"Exit")
+            print("[ERROR] Couldn't complete transaction.")
+            return
+        else:
+            conn.send(b"Success step 8")
+
+    #astemptam rezultatul tranzactiei
+    while True:
+        response = conn.recv(40).decode()
+        if response == "Success":
+            print("Transaction completed succesfully.")
+            break
+        elif response == "[ERROR] Couldn't complete transaction.":
+            print(response)
+            break

@@ -69,7 +69,7 @@ def merchant_steps(keys, conn):
         nonce = cryptography.decrypt_with_session_key(keys["customer_merchant_key"], *order_details["nonce"])
         order_details_signature = cryptography.check_signature(keys["customer_public_key"], pickle.dumps(order_details), order_details_signature)
 
-        if(product_id == None or sid_c == None or amount == None or nonce == None or order_details_signature == None or sid_c != sid.encode()):
+        if(product_id == None or sid_c == None or amount == None or nonce == None or not order_details_signature or sid_c != sid.encode()):
             conn.send(b"Exit")
             print("[ERROR] Couldn't complete transaction.")
             return
@@ -126,19 +126,32 @@ def merchant_steps(keys, conn):
         else:
             conn.send(b"Success step 5")
 
+    timeout = False
     while True:
         response = conn.recv(40).decode()
         if response == "Forwarding response to customer":
             break
         elif response == "Resolution":
-            return
+            timeout = True
+            break
         elif response == "[ERROR] Couldn't complete transaction.":
             print(response)
             return
 
     #pasul 6: trimitem raspunsul catre cumparator
-    conn.send(pickle.dumps({
-        "response": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], final_response),
-        "sid": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], sid),
-        "transaction_data_signature": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], transaction_data_signature)
-    }))
+    if not timeout:
+        conn.send(pickle.dumps({
+            "response": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], final_response),
+            "sid": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], sid),
+            "transaction_data_signature": cryptography.encrypt_with_session_key(keys["customer_merchant_key"], transaction_data_signature)
+        }))
+
+    #astemptam rezultatul tranzactiei
+    while True:
+        response = conn.recv(40).decode()
+        if response == "Success":
+            print("Transaction completed succesfully.")
+            break
+        elif response == "[ERROR] Couldn't complete transaction.":
+            print(response)
+            break

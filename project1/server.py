@@ -191,20 +191,46 @@ def exchange(customer, merchant, payment_gateway):
             close_connections(customer, merchant, payment_gateway, True)
             sys.exit()
         if status == "Success step 6":
+            payment_gateway.send(b"Complete payment")
             break
-    
-    print("FINISH")
-    resolution(customer, merchant, payment_gateway)
 
+    customer.send(b"Success")
+    merchant.send(b"Success")
+    payment_gateway.send(b"Success")
+    
 def resolution(customer, merchant, payment_gateway):
-    #pasul 7:
+    print("Started resolution protocol.")
+
+    #pasul 7: C incepe protocolul de rezolutie cu PG
     data = customer.recv(4096)
-    payment_gateway.send(b"Resolution data")
+    payment_gateway.send(b"Received resolution data")
     payment_gateway.send(data)
 
+    while True:
+        status = payment_gateway.recv(30).decode()
+        if status == "Exit":
+            close_connections(customer, merchant, payment_gateway, True)
+            sys.exit()
+        if status == "Success step 7":
+            break
+
+    #pasul 8: PG trimite din nou raspunsul catre C
     data = payment_gateway.recv(4096)
     customer.send(b"Resolution response")
     customer.send(data)
+
+    while True:
+        status = customer.recv(30).decode()
+        if status == "Exit":
+            close_connections(customer, merchant, payment_gateway, True)
+            sys.exit()
+        if status == "Success step 8":
+            payment_gateway.send(b"Complete payment")
+            break
+    
+    customer.send(b"Success")
+    merchant.send(b"Success")
+    payment_gateway.send(b"Success")
 
 def close_connections(customer, merchant, payment_gateway, error = False):
     if error:
@@ -241,4 +267,3 @@ if __name__ == "__main__":
 
     for i in range(0, 10):
         Thread(target=accept_clients, args=(customer_socket, merchant_socket, payment_gateway_socket)).start()
-
