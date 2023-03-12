@@ -1,5 +1,7 @@
 import json
 import pickle
+import calendar
+import datetime
 import cryptography
 
 CCODE = "1234"
@@ -64,8 +66,21 @@ def payment_gateway_steps(keys, conn):
             print("[ERROR] Couldn't complete transaction.")
             return
         else:
-            #TODO: verificam daca cardul lui C e valid
-            conn.send(b"Success step 4.3")
+            #verificam daca cardul lui C e valid
+            with open("data/cards.json", "r") as file:
+                cards = json.load(file)
+                for card in cards["customers"]:
+                    if card["id"] == int(credit_card_id):
+                        expires_month = int(card["expires"].split("/")[0])
+                        expires_year = int(card["expires"].split("/")[1])
+                        expires_date = datetime.date(expires_year, expires_month, calendar.monthrange(expires_year, expires_month)[1])
+                        if card["amount"] < int(amount_c) or expires_date < datetime.date.today():
+                            conn.send(b"Exit")
+                            print("[ERROR] Couldn't complete transaction.")
+                            return
+                        else:
+                            conn.send(b"Success step 4.3")
+                            break
     
     #verificam semnatura lui M
     transaction_details = {

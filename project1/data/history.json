@@ -28,5 +28,11 @@
         "sid": "189CD254VW",
         "amount": "100",
         "nonce": "BJMVOYaqV5RHNA1"
+    },
+    {
+        "response": "YES",
+        "sid": "A42WX5X5OC",
+        "amount": "100",
+        "nonce": "BJMVOYaqV5RHNA1"
     }
 ]

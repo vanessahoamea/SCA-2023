@@ -4,14 +4,14 @@
             "id": 1,
             "card_number": "1111 2222 3333 4444",
             "cvc": "123",
-            "expires": "2024/09",
-            "amount": 400
+            "expires": "09/2024",
+            "amount": 300
         },
         {
             "id": 2,
             "card_number": "5555 6666 7777 8888",
             "cvc": "987",
-            "expires": "2021/07",
+            "expires": "07/2021",
             "amount": 350
         }
     ],
@@ -20,14 +20,14 @@
             "id": 3,
             "card_number": "0123 9876 456 321",
             "cvc": "445",
-            "expires": "2026/12",
-            "amount": 400
+            "expires": "12/2026",
+            "amount": 500
         },
         {
             "id": 4,
             "card_number": "7531 2643 7899 3211",
             "cvc": "810",
-            "expires": "2023/03",
+            "expires": "03/2023",
             "amount": 500
         }
     ]
